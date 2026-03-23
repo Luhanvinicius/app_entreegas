@@ -1,0 +1,117 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // Using PostgreSQL as requested
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  phone     String
+  role      Role     @default(CUSTOMER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  // For Couriers
+  isApproved Boolean @default(false) 
+  balance    Float   @default(0)
+
+  // For Shopkeepers
+  storeId    String?
+  store      Store?   @relation(fields: [storeId], references: [id])
+
+  orders      Order[] @relation("CustomerOrders")
+  deliveries  Order[] @relation("CourierDeliveries")
+  withdrawals Withdrawal[]
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+  COURIER
+  SHOPKEEPER
+}
+
+model Store {
+  id          String    @id @default(uuid())
+  name        String
+  description String
+  phone       String
+  address     String?
+  isActive    Boolean   @default(true)
+  products    Product[]
+  orders      Order[]
+  users       User[]
+  createdAt   DateTime  @default(now())
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  price       Float
+  imageUrl    String?
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id])
+  isAvailable Boolean  @default(true)
+  orderItems  OrderItem[]
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  customerId  String?
+  customer    User?    @relation("CustomerOrders", fields: [customerId], references: [id])
+  customerName  String?
+  customerPhone String?
+  courierId   String?
+  courier     User?    @relation("CourierDeliveries", fields: [courierId], references: [id])
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id])
+  
+  status      OrderStatus @default(RECEIVED)
+  totalAmount Float
+  deliveryFee Float       @default(0)
+  paymentType PaymentType
+  address     String
+
+  items       OrderItem[]
+  createdAt   DateTime @default(now())
+}
+
+model Withdrawal {
+  id        String   @id @default(uuid())
+  amount    Float
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  courierId String
+  courier   User     @relation(fields: [courierId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float
+}
+
+enum OrderStatus {
+  RECEIVED
+  PREPARING
+  DISPATCHED
+  DELIVERED
+}
+
+enum PaymentType {
+  CASH
+  PIX
+  CARD
+}
