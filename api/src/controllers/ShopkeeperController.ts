@@ -53,18 +53,20 @@ export class ShopkeeperController {
       const storeId = req.user?.storeId;
       if (!storeId) return res.status(403).json({ error: 'Invalid store' });
 
-      const { customerName, customerPhone, deliveryAddress, totalAmount, deliveryFee, paymentType } = req.body;
+      const { customerName, customerPhone, address, deliveryAddress, totalAmount, deliveryFee, paymentType } = req.body;
+
+      const finalAddress = address || deliveryAddress;
 
       const order = await (prisma.order as any).create({
         data: {
           storeId,
           customerName,
           customerPhone,
-          address: deliveryAddress,
+          address: finalAddress,
           totalAmount: Number(totalAmount.toString().replace(',', '.')),
-          deliveryFee: Number(deliveryFee.toString().replace(',', '.')),
-          paymentType,
-          status: 'PREPARING' // O lojista já lança como pendente de preparo ou saiu para entrega
+          deliveryFee: Number((deliveryFee || 0).toString().replace(',', '.')),
+          paymentType: paymentType || 'PIX',
+          status: 'PREPARING'
         }
       });
 

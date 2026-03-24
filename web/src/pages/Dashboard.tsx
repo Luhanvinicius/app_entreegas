@@ -1,142 +1,237 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '../api';
-import { useAuth } from '../App';
-import { Package, Bike, Store, TrendingUp, Calendar, MapPin, Save, Edit2 } from 'lucide-react';
+import { Package, Truck, Store as StoreIcon, TrendingUp, Edit2, Check, X, MapPin, Phone, Loader2, DollarSign, Save } from 'lucide-react';
+
+interface Stats {
+  totalDeliveries: number;
+  revenue: number;
+  todayOrders: number;
+  productsCount: number;
+}
+
+interface StoreData {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+}
 
 export default function Dashboard() {
-  const [stats, setStats] = useState({ totalOrders: 0, todayOrders: 0, deliveriesRealizadas: 0, activeStores: 0, productsCount: 0 });
-  const [store, setStore] = useState<any>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [storeData, setStoreData] = useState<StoreData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editedStore, setEditedStore] = useState({ name: '', address: '', phone: '' });
-  const { user } = useAuth();
+  const [calculatingFee, setCalculatingFee] = useState(false);
+  
+  const [newOrder, setNewOrder] = useState({
+    customerName: '',
+    customerPhone: '',
+    address: '',
+    deliveryFee: 0,
+    totalAmount: '',
+    paymentType: 'PIX'
+  });
+
+  const [editForm, setEditForm] = useState<StoreData>({
+    id: '',
+    name: '',
+    address: '',
+    phone: ''
+  });
 
   useEffect(() => {
-    if (user?.role === 'ADMIN') {
-      api.get('/admin/dashboard').then(res => setStats(res.data));
-    } else {
-      api.get('/shop/dashboard').then(res => setStats(res.data));
-      api.get('/shop/profile').then(res => {
-        setStore(res.data);
-        setEditedStore({ name: res.data.name, address: res.data.address || '', phone: res.data.phone });
-      });
-    }
-  }, [user]);
+    fetchData();
+  }, []);
 
-  const handleUpdateStore = async () => {
+  // Monitora mudança no endereço para cálculo automático
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (newOrder.address.length > 8 && storeData?.address) {
+        handleCalculateFee();
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [newOrder.address]);
+
+  const fetchData = async () => {
     try {
-      await api.put('/shop/profile', editedStore);
-      setStore({ ...store, ...editedStore });
+      const [statsRes, storeRes] = await Promise.all([
+        api.get('/shop/dashboard'),
+        api.get('/shop/profile')
+      ]);
+      setStats(statsRes.data);
+      setStoreData(storeRes.data);
+      setEditForm(storeRes.data);
+    } catch (error) {
+      console.error('Erro ao carregar dados');
+    }
+  };
+
+  const handleCalculateFee = async () => {
+    if (!newOrder.address || !storeData?.address) return;
+    setCalculatingFee(true);
+    try {
+      const res = await api.post('/calculate-delivery', {
+        pickup_address: storeData.address,
+        delivery_address: newOrder.address,
+        price_per_km: 2.5
+      });
+      setNewOrder(prev => ({ ...prev, deliveryFee: res.data.delivery_fee }));
+    } catch (error) {
+      console.error('Erro ao calcular taxa');
+    } finally {
+      setCalculatingFee(false);
+    }
+  };
+
+  const handleCreateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newOrder.deliveryFee) {
+      alert('Aguarde o cálculo da taxa de entrega.');
+      return;
+    }
+    try {
+      await api.post('/shop/orders', {
+        ...newOrder,
+        totalAmount: Number(newOrder.totalAmount)
+      });
+      alert('🚀 Entrega lançada com sucesso!');
+      setNewOrder({ customerName: '', customerPhone: '', address: '', deliveryFee: 0, totalAmount: '', paymentType: 'PIX' });
+      fetchData();
+    } catch (error) {
+      alert('Erro ao lançar entrega');
+    }
+  };
+
+  const handleSaveStore = async () => {
+    try {
+      await api.put('/shop/profile', editForm);
+      setStoreData(editForm);
       setIsEditing(false);
-      alert('Dados da loja atualizados com sucesso!');
-    } catch (e) {
-      alert('Erro ao atualizar dados da loja.');
+      alert('Dados da loja atualizados!');
+    } catch (error) {
+      alert('Erro ao salvar dados da loja');
     }
   };
 
   const StatCard = ({ title, value, icon: Icon, color }: any) => (
-    <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-      <div style={{ 
-        background: color, 
-        padding: '12px', 
-        borderRadius: '12px', 
-        color: 'white',
-        boxShadow: `0 4px 12px ${color}44`
-      }}>
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+      <div style={{ background: color }} className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-lg">
         <Icon size={24} />
       </div>
       <div>
-        <h3 style={{ color: 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600, marginBottom: '4px' }}>{title}</h3>
-        <p style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>{value}</p>
+        <p className="text-sm text-gray-500 font-medium">{title}</p>
+        <h3 className="text-2xl font-bold text-gray-900">{value}</h3>
       </div>
     </div>
   );
 
   return (
-    <div>
-      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Bem-vindo ao centro de controle do Entregas.</p>
+    <div className="space-y-8">
+      {/* Formulário de Nova Entrega Expressa */}
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+        <div className="flex items-center gap-3 mb-8">
+           <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-lg">
+             <Truck className="text-white" size={20} />
+           </div>
+           <h2 className="text-2xl font-bold text-gray-900">Nova Entrega Expresso</h2>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'white', padding: '8px 16px', borderRadius: '12px', border: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.875rem', fontWeight: 600 }}>
-          <Calendar size={18} />
-          {new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
-        </div>
+
+        <form onSubmit={handleCreateOrder} className="grid grid-cols-1 md:grid-cols-12 gap-6">
+           <div className="md:col-span-4 space-y-2">
+             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cliente / Destinatário</label>
+             <input type="text" placeholder="Nome do Cliente" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={newOrder.customerName} onChange={e => setNewOrder({...newOrder, customerName: e.target.value})} required />
+           </div>
+           <div className="md:col-span-4 space-y-2">
+             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">WhatsApp</label>
+             <input type="text" placeholder="(85) 99999-9999" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={newOrder.customerPhone} onChange={e => setNewOrder({...newOrder, customerPhone: e.target.value})} required />
+           </div>
+           <div className="md:col-span-4 space-y-2">
+             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pagamento</label>
+             <select className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={newOrder.paymentType} onChange={e => setNewOrder({...newOrder, paymentType: e.target.value})}>
+                <option value="PIX">PIX</option>
+                <option value="CASH">Dinheiro</option>
+                <option value="CARD">Cartão (Entregador leva)</option>
+             </select>
+           </div>
+           <div className="md:col-span-12 space-y-2">
+             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Endereço de Entrega Completo (Fortaleza)</label>
+             <input type="text" placeholder="Rua, Número, Bairro" className="w-full px-4 py-3 bg-gray-50 border border-red-100 rounded-xl font-medium outline-none focus:ring-2 focus:ring-red-500" value={newOrder.address} onChange={e => setNewOrder({...newOrder, address: e.target.value})} required />
+           </div>
+           <div className="md:col-span-4 space-y-2">
+             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total do Pedido</label>
+             <input type="number" placeholder="0.00" className="w-full px-4 py-3 bg-gray-50 border rounded-xl font-bold outline-none" value={newOrder.totalAmount} onChange={e => setNewOrder({...newOrder, totalAmount: e.target.value})} step="0.01" required />
+           </div>
+           <div className="md:col-span-4 space-y-2">
+             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Taxa de Entrega (Auto)</label>
+             <div className="w-full px-4 py-3 bg-gray-100 border rounded-xl flex items-center justify-between">
+                {calculatingFee ? (
+                  <div className="flex items-center gap-2 text-red-600">
+                    <Loader2 className="animate-spin" size={16} />
+                    <span className="text-xs font-bold uppercase">Calculando...</span>
+                  </div>
+                ) : (
+                  <span className="text-xl font-black text-gray-900">R$ {newOrder.deliveryFee.toFixed(2)}</span>
+                )}
+                <MapPin size={16} className="text-gray-400" />
+             </div>
+           </div>
+           <div className="md:col-span-4 flex items-end">
+             <button type="submit" disabled={calculatingFee || !newOrder.deliveryFee} className="w-full py-4 bg-red-600 text-white font-black rounded-xl shadow-lg hover:bg-red-700 disabled:opacity-50 transition-all active:scale-95">
+               LANÇAR ENTREGA
+             </button>
+           </div>
+        </form>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px', marginBottom: '40px' }}>
-        <StatCard title="Pedidos de Hoje" value={stats.todayOrders} icon={TrendingUp} color="#EB1B2E" />
-        
-        {user?.role === 'ADMIN' ? (
-          <>
-            <StatCard title="Lojas Ativas" value={stats.activeStores || 0} icon={Store} color="#0EA5E9" />
-            <StatCard title="Entregas Feitas" value={stats.deliveriesRealizadas || 0} icon={Bike} color="#10B981" />
-          </>
-        ) : (
-          <StatCard title="Meus Produtos" value={stats.productsCount || 0} icon={Package} color="#8B5CF6" />
-        )}
-
-        <StatCard title="Total Acumulado" value={stats.totalOrders} icon={Package} color="#64748B" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Total Entregas" value={stats?.totalDeliveries || 0} icon={Package} color="#EB1B2E" />
+        <StatCard title="Faturamento" value={`R$ ${(stats?.revenue || 0).toFixed(2)}`} icon={DollarSign} color="#16A34A" />
+        <StatCard title="Pedidos Hoje" value={stats?.todayOrders || 0} icon={TrendingUp} color="#2563EB" />
+        <StatCard title="Produtos" value={stats?.productsCount || 0} icon={StoreIcon} color="#9333EA" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr)', gap: '24px' }}>
-        <div className="card" style={{ minHeight: "340px", display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '3rem', background: 'linear-gradient(to bottom right, #ffffff, #f8fafb)' }}>
-          <div style={{ background: 'rgba(235, 27, 46, 0.05)', padding: '24px', borderRadius: '50%', marginBottom: '1.5rem' }}>
-            <TrendingUp size={48} color="var(--primary)" />
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <StoreIcon className="text-gray-400" size={24} />
+            <h2 className="text-xl font-bold text-gray-900">Configuração da Loja</h2>
           </div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>Análise de Desempenho</h2>
-          <p style={{ color: 'var(--text-muted)', maxWidth: '400px' }}>Em breve você poderá visualizar gráficos detalhados de vendas e entregas diretamente aqui.</p>
+          <button onClick={() => setIsEditing(!isEditing)} className="flex items-center gap-2 text-red-600 font-bold hover:bg-red-50 px-4 py-2 rounded-lg transition-all">
+            {isEditing ? <><X size={18} /> Cancelar</> : <><Edit2 size={18} /> Editar Perfil</>}
+          </button>
         </div>
 
-        {user?.role === 'SHOPKEEPER' && store && (
-          <div className="card" style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Dados da Loja</h3>
-              <button 
-                onClick={() => setIsEditing(!isEditing)}
-                style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ddd', background: 'white', cursor: 'pointer' }}
-              >
-                {isEditing ? 'Cancelar' : <Edit2 size={16} color="#64748B" />}
-              </button>
+        {isEditing ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+             <div className="space-y-2">
+               <label className="text-xs text-gray-400 font-bold uppercase">Nome do Estabelecimento</label>
+               <input className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
+             </div>
+             <div className="space-y-2">
+               <label className="text-xs text-gray-400 font-bold uppercase">Endereço (Ponto de Partida)</label>
+               <input className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})} />
+             </div>
+             <div className="space-y-2">
+               <label className="text-xs text-gray-400 font-bold uppercase">WhatsApp da Loja</label>
+               <input className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} />
+             </div>
+             <button onClick={handleSaveStore} className="md:col-span-3 bg-red-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-red-700 shadow-lg transition-all active:scale-95">
+               <Save size={18} /> SALVAR ALTERAÇÕES
+             </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="flex items-center gap-4 bg-gray-50 p-6 rounded-2xl border border-gray-100">
+              <StoreIcon className="text-red-500" size={24} />
+              <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Loja</p><p className="font-bold text-gray-900">{storeData?.name || 'Não configurado'}</p></div>
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-               <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>Nome da Loja</label>
-                  {isEditing ? (
-                    <input className="input-field" value={editedStore.name} onChange={e => setEditedStore({...editedStore, name: e.target.value})} />
-                  ) : (
-                    <p style={{ fontSize: '15px', fontWeight: 600, color: '#1E293B', marginTop: '4px' }}>{store.name}</p>
-                  )}
-               </div>
-
-               <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>Endereço de Retirada</label>
-                  {isEditing ? (
-                    <input className="input-field" value={editedStore.address} onChange={e => setEditedStore({...editedStore, address: e.target.value})} placeholder="Ex: Rua A, 123" />
-                  ) : (
-                    <div style={{ flexDirection: 'row', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                       <MapPin size={14} color="#EB1B2E" />
-                       <p style={{ fontSize: '14px', fontWeight: 500, color: '#475569' }}>{store.address || 'Não cadastrado'}</p>
-                    </div>
-                  )}
-               </div>
-
-               <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase' }}>Telefone</label>
-                  {isEditing ? (
-                    <input className="input-field" value={editedStore.phone} onChange={e => setEditedStore({...editedStore, phone: e.target.value})} />
-                  ) : (
-                    <p style={{ fontSize: '15px', fontWeight: 600, color: '#1E293B', marginTop: '4px' }}>{store.phone}</p>
-                  )}
-               </div>
-
-               {isEditing && (
-                 <button onClick={handleUpdateStore} className="btn-primary" style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <Save size={18} />
-                    Salvar Alterações
-                 </button>
-               )}
+            <div className="flex items-center gap-4 bg-gray-50 p-6 rounded-2xl border border-gray-100">
+              <MapPin className="text-red-500" size={24} />
+              <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Localização</p><p className="font-bold text-gray-900">{storeData?.address || 'Não configurado'}</p></div>
+            </div>
+            <div className="flex items-center gap-4 bg-gray-50 p-6 rounded-2xl border border-gray-100">
+              <Phone className="text-red-500" size={24} />
+              <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Contato</p><p className="font-bold text-gray-900">{storeData?.phone || 'Não configurado'}</p></div>
             </div>
           </div>
         )}

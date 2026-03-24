@@ -6,6 +6,7 @@ import { ProductController } from '../controllers/ProductController';
 import { OrderController } from '../controllers/OrderController';
 import { AdminController } from '../controllers/AdminController';
 import { ShopkeeperController } from '../controllers/ShopkeeperController';
+import { DeliveryController } from '../controllers/DeliveryController'; // Added import
 
 const routes = Router();
 
@@ -15,9 +16,13 @@ const productController = new ProductController();
 const orderController = new OrderController();
 const adminController = new AdminController();
 const shopkeeperController = new ShopkeeperController();
+const deliveryController = new DeliveryController(); // Added instantiation
 
 // Auth
 routes.use('/auth', authRoutes);
+
+// --- PUBLIC ROUTES ---
+routes.post('/calculate-delivery', deliveryController.calculate); // Added route
 
 // --- CUSTOMER ROUTES ---
 routes.get('/stores', authMiddleware, storeController.index);
