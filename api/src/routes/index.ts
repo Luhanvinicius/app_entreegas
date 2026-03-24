@@ -23,18 +23,22 @@ routes.use('/auth', authRoutes);
 
 // --- PUBLIC ROUTES ---
 routes.post('/calculate-delivery', deliveryController.calculate); // Added route
+routes.post('/webhooks/asaas', (req, res) => orderController.handleWebhook(req, res));
 
 // --- CUSTOMER ROUTES ---
 routes.get('/stores', authMiddleware, storeController.index);
 routes.get('/stores/:storeId/products', authMiddleware, productController.indexByStore);
-routes.post('/orders', authMiddleware, roleMiddleware(['CUSTOMER']), (req, res) => orderController.create(req as AuthRequest, res));
-routes.get('/customer/orders', authMiddleware, roleMiddleware(['CUSTOMER']), (req, res) => orderController.customerOrders(req as AuthRequest, res));
+routes.post('/orders', authMiddleware, roleMiddleware(['CUSTOMER', 'SHOPKEEPER', 'ADMIN']), (req, res) => orderController.create(req as AuthRequest, res));
+routes.get('/customer/orders', authMiddleware, roleMiddleware(['CUSTOMER', 'SHOPKEEPER']), (req, res) => orderController.customerOrders(req as AuthRequest, res));
+routes.post('/orders/:id/generate-pix', authMiddleware, roleMiddleware(['CUSTOMER', 'COURIER', 'SHOPKEEPER']), (req, res) => orderController.generatePixCharge(req as AuthRequest, res));
+routes.get('/orders/:id/check-payment', authMiddleware, roleMiddleware(['CUSTOMER', 'SHOPKEEPER', 'ADMIN']), (req, res) => orderController.checkPayment(req as AuthRequest, res));
 
 // --- COURIER ROUTES ---
 routes.get('/courier/available-orders', authMiddleware, roleMiddleware(['COURIER']), orderController.availableOrders);
 routes.get('/courier/orders', authMiddleware, roleMiddleware(['COURIER']), (req, res) => orderController.courierDeliveries(req as AuthRequest, res));
 routes.patch('/orders/:id/accept', authMiddleware, roleMiddleware(['COURIER']), (req, res) => orderController.acceptOrder(req as AuthRequest, res));
 routes.patch('/orders/:id/status-courier', authMiddleware, roleMiddleware(['COURIER']), orderController.updateStatus);
+routes.patch('/orders/:id/mark-arrived', authMiddleware, roleMiddleware(['COURIER']), (req, res) => orderController.markArrived(req as AuthRequest, res)); // New route
 routes.get('/courier/profile', authMiddleware, roleMiddleware(['COURIER']), (req, res) => orderController.courierProfile(req as AuthRequest, res));
 routes.post('/courier/withdraw', authMiddleware, roleMiddleware(['COURIER']), (req, res) => orderController.requestWithdrawal(req as AuthRequest, res));
 

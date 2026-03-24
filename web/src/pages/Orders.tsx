@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../App';
-import { Plus, Clock, Bike, Truck, Loader2, MapPin } from 'lucide-react';
+import { Plus, Clock, Bike, Truck, Loader2, MapPin, Copy } from 'lucide-react';
 
 export default function Orders() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -9,6 +9,8 @@ export default function Orders() {
   const [loading, setLoading] = useState(false);
   const [calculatingFee, setCalculatingFee] = useState(false);
   const [storeAddress, setStoreAddress] = useState('');
+  const [paymentModalOrder, setPaymentModalOrder] = useState<any>(null);
+  const [checkingPayment, setCheckingPayment] = useState(false);
   
   const [newOrder, setNewOrder] = useState({
     customerName: '',
@@ -17,7 +19,7 @@ export default function Orders() {
     deliveryFee: 0,
     distance: 0,
     totalAmount: '',
-    paymentType: 'PIX'
+    paymentMethod: 'ADVANCE' as 'ADVANCE' | 'ON_DELIVERY'
   });
 
   const endpoint = user?.role === 'ADMIN' ? '/admin/orders' : '/shop/orders';
@@ -29,6 +31,25 @@ export default function Orders() {
     const interval = setInterval(fetchOrders, 10000);
     return () => clearInterval(interval);
   }, [user]);
+
+  // Polling automático de pagamento
+  useEffect(() => {
+    let pollInterval: any;
+    if (paymentModalOrder) {
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await api.get(`/orders/${paymentModalOrder.id}/check-payment`);
+          if (res.data.paid) {
+             // Notificação de sucesso antes de fechar
+             alert('✅ Pagamento Confirmado! Sua entrega acaba de ser liberada.');
+             setPaymentModalOrder(null);
+             fetchOrders();
+          }
+        } catch (e) {}
+      }, 3000);
+    }
+    return () => clearInterval(pollInterval);
+  }, [paymentModalOrder]);
 
   // Monitora mudança no endereço para cálculo automático
   useEffect(() => {
@@ -88,21 +109,56 @@ export default function Orders() {
     }
     setLoading(true);
     try {
-      await api.post('/shop/orders', { 
+      const response = await api.post('/orders', { 
         ...newOrder,
         totalAmount: Number(newOrder.totalAmount)
       });
-      alert('🚀 Entrega lançada com sucesso!');
-      setNewOrder({ customerName: '', customerPhone: '', address: '', deliveryFee: 0, distance: 0, totalAmount: '', paymentType: 'PIX' });
+
+      if (response.data.pixQrCode && newOrder.paymentMethod === 'ADVANCE') {
+        setPaymentModalOrder(response.data);
+      } else {
+        alert('🚀 Entrega lançada com sucesso!');
+      }
+
+      setNewOrder({ 
+        customerName: '', 
+        customerPhone: '', 
+        address: '', 
+        deliveryFee: 0, 
+        distance: 0, 
+        totalAmount: '', 
+        paymentMethod: 'ADVANCE' 
+      });
       fetchOrders();
     } catch(e) {
       alert('Erro ao lançar entrega');
     } finally { setLoading(false); }
   };
 
+  const handleCheckPayment = async () => {
+    if (!paymentModalOrder) return;
+    setCheckingPayment(true);
+    try {
+      const res = await api.get(`/orders/${paymentModalOrder.id}/check-payment`);
+      if (res.data.paid) {
+        alert('✅ Taxa confirmada! Entrega liberada para os entregadores.');
+        setPaymentModalOrder(null);
+        fetchOrders();
+      } else {
+        alert('Aguardando compensação do Pix... (Pode demorar uns segundos)');
+      }
+    } catch (e) {
+      alert('Erro ao verificar pagamento');
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
+
+
   const getStatusBadgeClass = (status: string) => {
     switch(status) {
       case 'RECEIVED': return 'status-preparing';
+      case 'ACCEPTED': return 'status-ready'; // Adicionado status Aceito
       case 'PREPARING': return 'status-ready';
       case 'DISPATCHED': return 'status-dispatched';
       case 'DELIVERED': return 'status-delivered';
@@ -113,6 +169,7 @@ export default function Orders() {
   const getStatusLabel = (status: string) => {
     switch(status) {
       case 'RECEIVED': return 'Recebido';
+      case 'ACCEPTED': return 'Aceito pelo Motoboy'; // Melhoria de visibilidade
       case 'PREPARING': return 'Preparando';
       case 'DISPATCHED': return 'Em Rota';
       case 'DELIVERED': return 'Entregue';
@@ -152,11 +209,10 @@ export default function Orders() {
                 <input type="text" placeholder="(85) 99999-9999" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={newOrder.customerPhone} onChange={e => setNewOrder({...newOrder, customerPhone: e.target.value})} required />
               </div>
               <div className="md:col-span-4 space-y-2">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pagamento</label>
-                <select className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={newOrder.paymentType} onChange={e => setNewOrder({...newOrder, paymentType: e.target.value})}>
-                   <option value="PIX">PIX</option>
-                   <option value="CASH">Dinheiro</option>
-                   <option value="CARD">Cartão</option>
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Regra de Cobrança</label>
+                <select className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none" value={newOrder.paymentMethod} onChange={e => setNewOrder({...newOrder, paymentMethod: e.target.value as any})}>
+                   <option value="ADVANCE">Pedido já Pago (Venda Online)</option>
+                   <option value="ON_DELIVERY">Cobrar na Entrega (via Pix)</option>
                 </select>
               </div>
               <div className="md:col-span-12 space-y-2">
@@ -262,12 +318,57 @@ export default function Orders() {
           </tbody>
         </table>
       </div>
-      
+
+      {/* Modal de Pagamento da Taxa */}
+      {paymentModalOrder && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+          <div style={{ background: 'white', borderRadius: '24px', width: '100%', maxWidth: '400px', overflow: 'hidden', animation: 'scaleUp 0.3s ease' }}>
+            <div style={{ background: '#EF4444', padding: '24px', color: 'white', textAlign: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800 }}>Pagar Taxa de Entrega</h3>
+              <p style={{ margin: '4px 0 0', fontSize: '0.875rem', opacity: 0.9 }}>Pague o Pix para liberar sua entrega agora</p>
+            </div>
+            
+            <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ background: '#F3F4F6', padding: '16px', borderRadius: '20px', marginBottom: '24px' }}>
+                <img src={`data:image/png;base64,${paymentModalOrder.pixQrCode}`} style={{ width: '192px', height: '192px' }} alt="QR Code Pix" />
+              </div>
+              
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <p style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 900, color: '#1F2937', margin: 0 }}>R$ {paymentModalOrder.deliveryFee.toFixed(2)}</p>
+                
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(paymentModalOrder.pixCode || '');
+                    alert('Código Copia e Cola copiado!');
+                  }}
+                  style={{ width: '100%', padding: '16px', background: '#F3F4F6', color: '#374151', fontWeight: 700, border: 'none', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: 'pointer', transition: 'all 0.2s' }}
+                >
+                  <Copy size={18} />
+                  Copiar Código Pix
+                </button>
+
+                <button 
+                  onClick={handleCheckPayment}
+                  disabled={checkingPayment}
+                  style={{ width: '100%', padding: '16px', background: checkingPayment ? '#F87171' : '#EF4444', color: 'white', fontWeight: 800, border: 'none', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  {checkingPayment ? <Loader2 className="animate-spin" size={20} /> : 'Já realizei o pagamento'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @keyframes pulse {
           0% { transform: scale(1); opacity: 1; }
           50% { transform: scale(1.5); opacity: 0.5; }
           100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes scaleUp {
+          from { transform: scale(0.9); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
         }
       `}</style>
     </div>

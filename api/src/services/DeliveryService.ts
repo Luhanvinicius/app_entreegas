@@ -92,7 +92,12 @@ export class DeliveryService {
       const distanceKm = await this.calculateDistance(pickupCoords, deliveryCoords);
 
       // 3. Calcular taxa final
-      const deliveryFee = distanceKm * pricePerKm;
+      let deliveryFee = distanceKm * pricePerKm;
+      
+      // Regra: Valor mínimo de R$ 5,00 para respeitar o Asaas
+      if (deliveryFee < 5) {
+        deliveryFee = 5;
+      }
 
       return {
         distance_km: distanceKm,

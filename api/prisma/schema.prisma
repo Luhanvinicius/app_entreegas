@@ -63,26 +63,55 @@ model Product {
   orderItems  OrderItem[]
 }
 
-model Order {
-  id          String   @id @default(uuid())
-  customerId  String?
-  customer    User?    @relation("CustomerOrders", fields: [customerId], references: [id])
-  customerName  String?
-  customerPhone String?
-  courierId   String?
-  courier     User?    @relation("CourierDeliveries", fields: [courierId], references: [id])
-  storeId     String
-  store       Store    @relation(fields: [storeId], references: [id])
-  
-  status      OrderStatus @default(RECEIVED)
-  totalAmount Float
-  deliveryFee Float       @default(0)
-  paymentType PaymentType
-  address     String
+enum OrderStatus {
+  PENDING
+  AVAILABLE
+  ACCEPTED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
 
-  items       OrderItem[]
-  distance    Float?
-  createdAt   DateTime @default(now())
+enum PaymentMethod {
+  ADVANCE
+  ON_DELIVERY
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  totalAmount   Float
+  deliveryFee   Float
+  distance      Float?        // Distância em KM
+  status        OrderStatus   @default(PENDING)
+  paymentMethod PaymentMethod @default(ADVANCE)
+  paymentStatus PaymentStatus @default(PENDING)
+  
+  // Campos Integração Asaas
+  asaasId       String?       // ID da fatura no Asaas
+  pixCode       String?       // Código Copia e Cola
+  pixQrCode     String?       @db.Text // Base64 do QR Code
+
+  address       String
+  customerName  String
+  customerPhone String
+  
+  storeId       String
+  store         Store       @relation(fields: [storeId], references: [id])
+  
+  customerId    String?
+  customer      User?       @relation("CustomerOrders", fields: [customerId], references: [id])
+  courierId     String?
+  courier       User?       @relation("CourierDeliveries", fields: [courierId], references: [id])
+  
+  items         OrderItem[]
+  
+  arrivedAt     DateTime?   // Horário que o entregador clicou em "Cheguei"
+  createdAt     DateTime    @default(now())
 }
 
 model Withdrawal {
@@ -102,17 +131,4 @@ model OrderItem {
   product   Product @relation(fields: [productId], references: [id])
   quantity  Int
   price     Float
-}
-
-enum OrderStatus {
-  RECEIVED
-  PREPARING
-  DISPATCHED
-  DELIVERED
-}
-
-enum PaymentType {
-  CASH
-  PIX
-  CARD
 }
