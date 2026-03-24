@@ -53,7 +53,7 @@ export class ShopkeeperController {
       const storeId = req.user?.storeId;
       if (!storeId) return res.status(403).json({ error: 'Invalid store' });
 
-      const { customerName, customerPhone, address, deliveryAddress, totalAmount, deliveryFee, paymentType } = req.body;
+      const { customerName, customerPhone, address, deliveryAddress, totalAmount, deliveryFee, paymentType, distance } = req.body;
 
       const finalAddress = address || deliveryAddress;
 
@@ -66,7 +66,8 @@ export class ShopkeeperController {
           totalAmount: Number(totalAmount.toString().replace(',', '.')),
           deliveryFee: Number((deliveryFee || 0).toString().replace(',', '.')),
           paymentType: paymentType || 'PIX',
-          status: 'PREPARING'
+          status: 'PREPARING',
+          distance: distance ? Number(distance) : null
         }
       });
 

@@ -81,6 +81,7 @@ model Order {
   address     String
 
   items       OrderItem[]
+  distance    Float?
   createdAt   DateTime @default(now())
 }
 

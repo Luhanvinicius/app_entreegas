@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
-import { Package, Truck, Store as StoreIcon, TrendingUp, Edit2, Check, X, MapPin, Phone, Loader2, DollarSign, Save } from 'lucide-react';
+import { Package, Store as StoreIcon, TrendingUp, Edit2, X, MapPin, Phone, DollarSign, Save, Calendar } from 'lucide-react';
 
 interface Stats {
   totalDeliveries: number;
@@ -20,17 +20,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [storeData, setStoreData] = useState<StoreData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [calculatingFee, setCalculatingFee] = useState(false);
   
-  const [newOrder, setNewOrder] = useState({
-    customerName: '',
-    customerPhone: '',
-    address: '',
-    deliveryFee: 0,
-    totalAmount: '',
-    paymentType: 'PIX'
-  });
-
   const [editForm, setEditForm] = useState<StoreData>({
     id: '',
     name: '',
@@ -41,16 +31,6 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData();
   }, []);
-
-  // Monitora mudança no endereço para cálculo automático
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (newOrder.address.length > 8 && storeData?.address) {
-        handleCalculateFee();
-      }
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [newOrder.address]);
 
   const fetchData = async () => {
     try {
@@ -63,42 +43,6 @@ export default function Dashboard() {
       setEditForm(storeRes.data);
     } catch (error) {
       console.error('Erro ao carregar dados');
-    }
-  };
-
-  const handleCalculateFee = async () => {
-    if (!newOrder.address || !storeData?.address) return;
-    setCalculatingFee(true);
-    try {
-      const res = await api.post('/calculate-delivery', {
-        pickup_address: storeData.address,
-        delivery_address: newOrder.address,
-        price_per_km: 2.5
-      });
-      setNewOrder(prev => ({ ...prev, deliveryFee: res.data.delivery_fee }));
-    } catch (error) {
-      console.error('Erro ao calcular taxa');
-    } finally {
-      setCalculatingFee(false);
-    }
-  };
-
-  const handleCreateOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newOrder.deliveryFee) {
-      alert('Aguarde o cálculo da taxa de entrega.');
-      return;
-    }
-    try {
-      await api.post('/shop/orders', {
-        ...newOrder,
-        totalAmount: Number(newOrder.totalAmount)
-      });
-      alert('🚀 Entrega lançada com sucesso!');
-      setNewOrder({ customerName: '', customerPhone: '', address: '', deliveryFee: 0, totalAmount: '', paymentType: 'PIX' });
-      fetchData();
-    } catch (error) {
-      alert('Erro ao lançar entrega');
     }
   };
 
@@ -127,64 +71,19 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Formulário de Nova Entrega Expressa */}
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-        <div className="flex items-center gap-3 mb-8">
-           <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-lg">
-             <Truck className="text-white" size={20} />
-           </div>
-           <h2 className="text-2xl font-bold text-gray-900">Nova Entrega Expresso</h2>
+      <div className="page-header flex justify-between items-end mb-4">
+        <div>
+           <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mb-1">Análise Geral</p>
+           <h1 className="text-3xl font-black text-gray-900 tracking-tighter">Seu Dashboard</h1>
         </div>
-
-        <form onSubmit={handleCreateOrder} className="grid grid-cols-1 md:grid-cols-12 gap-6">
-           <div className="md:col-span-4 space-y-2">
-             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Cliente / Destinatário</label>
-             <input type="text" placeholder="Nome do Cliente" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={newOrder.customerName} onChange={e => setNewOrder({...newOrder, customerName: e.target.value})} required />
-           </div>
-           <div className="md:col-span-4 space-y-2">
-             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">WhatsApp</label>
-             <input type="text" placeholder="(85) 99999-9999" className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={newOrder.customerPhone} onChange={e => setNewOrder({...newOrder, customerPhone: e.target.value})} required />
-           </div>
-           <div className="md:col-span-4 space-y-2">
-             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pagamento</label>
-             <select className="w-full px-4 py-3 bg-gray-50 border rounded-xl outline-none focus:ring-2 focus:ring-red-500" value={newOrder.paymentType} onChange={e => setNewOrder({...newOrder, paymentType: e.target.value})}>
-                <option value="PIX">PIX</option>
-                <option value="CASH">Dinheiro</option>
-                <option value="CARD">Cartão (Entregador leva)</option>
-             </select>
-           </div>
-           <div className="md:col-span-12 space-y-2">
-             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Endereço de Entrega Completo (Fortaleza)</label>
-             <input type="text" placeholder="Rua, Número, Bairro" className="w-full px-4 py-3 bg-gray-50 border border-red-100 rounded-xl font-medium outline-none focus:ring-2 focus:ring-red-500" value={newOrder.address} onChange={e => setNewOrder({...newOrder, address: e.target.value})} required />
-           </div>
-           <div className="md:col-span-4 space-y-2">
-             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total do Pedido</label>
-             <input type="number" placeholder="0.00" className="w-full px-4 py-3 bg-gray-50 border rounded-xl font-bold outline-none" value={newOrder.totalAmount} onChange={e => setNewOrder({...newOrder, totalAmount: e.target.value})} step="0.01" required />
-           </div>
-           <div className="md:col-span-4 space-y-2">
-             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Taxa de Entrega (Auto)</label>
-             <div className="w-full px-4 py-3 bg-gray-100 border rounded-xl flex items-center justify-between">
-                {calculatingFee ? (
-                  <div className="flex items-center gap-2 text-red-600">
-                    <Loader2 className="animate-spin" size={16} />
-                    <span className="text-xs font-bold uppercase">Calculando...</span>
-                  </div>
-                ) : (
-                  <span className="text-xl font-black text-gray-900">R$ {newOrder.deliveryFee.toFixed(2)}</span>
-                )}
-                <MapPin size={16} className="text-gray-400" />
-             </div>
-           </div>
-           <div className="md:col-span-4 flex items-end">
-             <button type="submit" disabled={calculatingFee || !newOrder.deliveryFee} className="w-full py-4 bg-red-600 text-white font-black rounded-xl shadow-lg hover:bg-red-700 disabled:opacity-50 transition-all active:scale-95">
-               LANÇAR ENTREGA
-             </button>
-           </div>
-        </form>
+        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border text-sm font-bold text-gray-500 shadow-sm">
+           <Calendar size={18} className="text-red-500" />
+           {new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Entregas" value={stats?.totalDeliveries || 0} icon={Package} color="#EB1B2E" />
+        <StatCard title="Total Entregas" value={stats?.totalOrders || 0} icon={Package} color="#EB1B2E" />
         <StatCard title="Faturamento" value={`R$ ${(stats?.revenue || 0).toFixed(2)}`} icon={DollarSign} color="#16A34A" />
         <StatCard title="Pedidos Hoje" value={stats?.todayOrders || 0} icon={TrendingUp} color="#2563EB" />
         <StatCard title="Produtos" value={stats?.productsCount || 0} icon={StoreIcon} color="#9333EA" />
